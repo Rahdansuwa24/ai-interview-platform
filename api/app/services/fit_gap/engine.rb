@@ -43,14 +43,14 @@ module FitGap
       comparisons = vacancy_skills.map do |label, vacancy_skill|
         portfolio_skill = find_portfolio_skill(portfolio_skills, label, vacancy_skill.skill_id)
 
-        if portfolio_skill
-          candidate_level  = portfolio_skill[:effective_level]
-          expected_level   = vacancy_skill.expected_level
+        if portfolio_skill && portfolio_skill[:effective_level].present? && portfolio_skill[:effective_level].to_i.positive?
+          candidate_level  = portfolio_skill[:effective_level].to_i
+          expected_level   = vacancy_skill.expected_level.to_i
           delta            = candidate_level - expected_level
           result           = delta == 0 ? 'match' : (delta > 0 ? 'exceed' : 'gap')
         else
           candidate_level = nil
-          expected_level  = vacancy_skill.expected_level
+          expected_level  = vacancy_skill.expected_level.to_i
           delta           = nil
           result          = 'not_assessed'
         end
@@ -60,9 +60,11 @@ module FitGap
           skill_id:        vacancy_skill.skill_id,
           candidate_level: candidate_level,
           expected_level:  expected_level,
+          required_level:  expected_level,
           result:          result,
           delta:           delta,
-          confidence:      portfolio_skill&.dig(:confidence)
+          confidence:      portfolio_skill&.dig(:confidence),
+          is_override:     portfolio_skill&.dig(:overridden) || false
         }
       end
 
@@ -139,11 +141,14 @@ module FitGap
     end
 
     def generate_fallback_narrative(comparisons)
-      gaps    = comparisons.count { |c| c[:result] == 'gap' }
-      matches = comparisons.count { |c| c[:result] == 'match' }
-      exceeds = comparisons.count { |c| c[:result] == 'exceed' }
+      gaps         = comparisons.count { |c| c[:result] == 'gap' }
+      matches      = comparisons.count { |c| c[:result] == 'match' }
+      exceeds      = comparisons.count { |c| c[:result] == 'exceed' }
+      not_assessed = comparisons.count { |c| c[:result] == 'not_assessed' }
 
-      "Candidate shows #{matches} skill matches, #{exceeds} exceeds, and #{gaps} gaps against role requirements."
+      parts = ["Candidate shows #{matches} skill match#{'es' unless matches == 1}, #{exceeds} exceeds, and #{gaps} gap#{'s' unless gaps == 1}"]
+      parts << "with #{not_assessed} skill#{'s' unless not_assessed == 1} not assessed" if not_assessed.positive?
+      "#{parts.join(' ')} against role requirements."
     end
   end
 end

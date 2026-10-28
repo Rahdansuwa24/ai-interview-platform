@@ -48,6 +48,26 @@ const HardwareCheck: React.FC<HardwareCheckProps> = ({ onStart }) => {
     const [audioLevel, setAudioLevel] = useState<number>(0);
     const videoRef = useRef<HTMLVideoElement>(null);
 
+    // Audio & animation refs for leak-free teardown
+    const micStreamRef = useRef<MediaStream | null>(null);
+    const monitoringAudioCtxRef = useRef<AudioContext | null>(null);
+    const animFrameIdRef = useRef<number | null>(null);
+
+    const cleanupAudioMonitoring = () => {
+        if (animFrameIdRef.current !== null) {
+            cancelAnimationFrame(animFrameIdRef.current);
+            animFrameIdRef.current = null;
+        }
+        if (monitoringAudioCtxRef.current) {
+            monitoringAudioCtxRef.current.close().catch(() => {});
+            monitoringAudioCtxRef.current = null;
+        }
+        if (micStreamRef.current) {
+            micStreamRef.current.getTracks().forEach((track) => track.stop());
+            micStreamRef.current = null;
+        }
+    };
+
     useEffect(() => {
         const { osAndBrowser, internet, camera, audio, microphone } = progress;
         setAllPassed(
@@ -64,13 +84,17 @@ const HardwareCheck: React.FC<HardwareCheckProps> = ({ onStart }) => {
     }, [videoStream]);
 
     useEffect(() => {
-        return () => { videoStream?.getTracks().forEach((t) => t.stop()); };
+        return () => {
+            cleanupAudioMonitoring();
+            videoStream?.getTracks().forEach((t) => t.stop());
+        };
     }, [videoStream]);
 
     const checkAudioPlayback = async (): Promise<boolean> => {
+        let ctx: AudioContext | null = null;
         try {
             const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-            const ctx = new AudioCtx();
+            ctx = new AudioCtx();
             if (ctx.state === "suspended") await ctx.resume();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
@@ -80,26 +104,44 @@ const HardwareCheck: React.FC<HardwareCheckProps> = ({ onStart }) => {
             osc.frequency.setValueAtTime(440, ctx.currentTime);
             osc.start(ctx.currentTime);
             osc.stop(ctx.currentTime + 0.1);
+
+            // Teardown playback context after tone completes
+            setTimeout(() => {
+                ctx?.close().catch(() => {});
+            }, 150);
             return true;
-        } catch { return false; }
+        } catch {
+            ctx?.close().catch(() => {});
+            return false;
+        }
     };
 
     const startAudioLevelMonitoring = (stream: MediaStream) => {
         try {
+            // Clean up any previous monitoring instance before starting a new one
+            cleanupAudioMonitoring();
+            micStreamRef.current = stream;
+
             const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
             const ctx = new AudioCtx();
+            monitoringAudioCtxRef.current = ctx;
+
             const source = ctx.createMediaStreamSource(stream);
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 256;
             source.connect(analyser);
             const data = new Uint8Array(analyser.frequencyBinCount);
+
             const update = () => {
+                if (!monitoringAudioCtxRef.current) return;
                 analyser.getByteFrequencyData(data);
                 setAudioLevel(Math.round(data.reduce((a, b) => a + b, 0) / data.length));
-                requestAnimationFrame(update);
+                animFrameIdRef.current = requestAnimationFrame(update);
             };
-            update();
-        } catch { /* silent */ }
+            animFrameIdRef.current = requestAnimationFrame(update);
+        } catch {
+            // Non-fatal fallback
+        }
     };
 
     // Step 1: OS & browser
@@ -176,6 +218,7 @@ const HardwareCheck: React.FC<HardwareCheckProps> = ({ onStart }) => {
     }, [progress.audio]);
 
     const retryAll = () => {
+        cleanupAudioMonitoring();
         videoStream?.getTracks().forEach((t) => t.stop());
         setVideoStream(null);
         setInternetResult(null);
@@ -282,7 +325,10 @@ const HardwareCheck: React.FC<HardwareCheckProps> = ({ onStart }) => {
                     size="sm"
                     className="ml-auto"
                     disabled={!allPassed}
-                    onClick={onStart}
+                    onClick={() => {
+                        cleanupAudioMonitoring();
+                        onStart?.();
+                    }}
                 >
                     Start Interview
                 </Button>

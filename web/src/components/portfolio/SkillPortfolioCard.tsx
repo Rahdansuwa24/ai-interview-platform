@@ -17,6 +17,14 @@ export default function SkillPortfolioCard({
   override,
   onOverrideSaved,
 }: SkillPortfolioCardProps) {
+  const isUnassessed =
+    !override &&
+    (skill.ai_level == null ||
+      skill.ai_level === "" ||
+      skill.ai_level.toLowerCase() === "unassessed" ||
+      skill.ai_confidence?.toLowerCase() === "unassessed" ||
+      parseLevel(skill.ai_level) === 0);
+
   const effectiveLevel = override?.override_level ?? parseLevel(skill.ai_level);
 
   return (
@@ -35,21 +43,31 @@ export default function SkillPortfolioCard({
                   </span>
                 )}
               </div>
-              <ConfidenceIndicator confidence={skill.ai_confidence} />
+              <ConfidenceIndicator confidence={isUnassessed ? "unassessed" : skill.ai_confidence} />
             </div>
           </div>
           <OverridePanel skill={skill} existingOverride={override} onSaved={onOverrideSaved} />
         </div>
 
+        {/* Unassessed notice */}
+        {isUnassessed && (
+          <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded px-3 py-2.5 space-y-1">
+            <p className="font-medium text-slate-700">Skill ini belum sempat diujikan pada sesi wawancara ini.</p>
+            <p className="text-slate-500">
+              Tidak ada bukti dialog di transkrip. Asesor dapat menetapkan override level secara manual atau mengevaluasi skill ini pada tahap wawancara berikutnya.
+            </p>
+          </div>
+        )}
+
         {/* Low confidence note */}
-        {skill.ai_confidence?.toLowerCase() === "low" && (
+        {!isUnassessed && skill.ai_confidence?.toLowerCase() === "low" && (
           <div className="text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded px-3 py-2">
             Only briefly explored. Confidence is low — warrants a dedicated session if this skill matters.
           </div>
         )}
 
         {/* Evidence */}
-        {skill.evidence.length > 0 && (
+        {skill.evidence && skill.evidence.length > 0 && (
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Evidence from interview

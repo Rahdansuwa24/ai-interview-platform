@@ -21,13 +21,15 @@ import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { useAudioWebSocket } from "@/hooks/useAudioWebSocket";
 import { sessionsApi } from "@/services/sessions";
 import HardwareCheck from "@/components/HardwareCheck";
-import { CheckCircle, Mic, MicOff } from "lucide-react";
+import PrivacyConsentModal from "@/components/interview/PrivacyConsentModal";
+import { CheckCircle, Mic, MicOff, ShieldCheck } from "lucide-react";
 import type { CandidateInfo, InterviewState, InterviewSpeaker, TranscriptTurn } from "@/types";
 
 export default function InterviewPage() {
   const { token } = useParams<{ token: string }>();
   const [candidateInfo, setCandidateInfo] = useState<CandidateInfo | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
+  const [consentGiven, setConsentGiven] = useState(false);
   const [interviewState, setInterviewState] = useState<InterviewState>("idle");
   const [speaker, setSpeaker] = useState<InterviewSpeaker>(null);
   const [transcript, setTranscript] = useState<Pick<TranscriptTurn, "speaker" | "text">[]>([]);
@@ -200,8 +202,37 @@ export default function InterviewPage() {
           )}
         </div>
 
-        {!hardwareCheckDone ? (
+        <PrivacyConsentModal
+          open={!consentGiven}
+          onConsent={() => setConsentGiven(true)}
+          roleTitle={candidateInfo?.role_title}
+        />
+
+        {!consentGiven ? (
           <div className="space-y-4">
+            <div className="bg-muted/50 rounded-lg p-5 text-sm space-y-3 text-muted-foreground border">
+              <div className="flex items-center gap-2 text-foreground font-medium">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                <span>Persetujuan Privasi Diperlukan</span>
+              </div>
+              <p>
+                Sesuai ketentuan UU No. 27 Tahun 2022 (UU PDP), Anda perlu memberikan persetujuan eksplisit atas pemrosesan data biometrik suara sebelum tes mikrofon dan kamera dapat diaktifkan.
+              </p>
+              <Button
+                variant="outline"
+                className="w-full mt-2"
+                onClick={() => setConsentGiven(false)}
+              >
+                Buka Dialog Persetujuan UU PDP
+              </Button>
+            </div>
+          </div>
+        ) : !hardwareCheckDone ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3.5 py-2">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-blue-600" />
+              <span>Persetujuan privasi UU PDP telah diberikan. Silakan selesaikan pengecekan perangkat.</span>
+            </div>
             <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1.5 text-muted-foreground">
               <p>• This is a voice interview. Make sure you're in a quiet place.</p>
               <p>• The AI will ask follow-up questions — there are no scripts.</p>

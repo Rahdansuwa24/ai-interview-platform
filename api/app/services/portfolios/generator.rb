@@ -99,6 +99,11 @@ module Portfolios
            medium — probe_count = 2 OR state = partial
            low — probe_count <= 1 OR state = initiated
 
+        UNASSESSED SKILLS RULE:
+        If a skill has state 'not_yet' and probe_count == 0 (or no candidate quotes exist in the transcript),
+        DO NOT invent an evaluation or force a level.
+        Set "level": null, "confidence": "unassessed", "evidence": [], "competency_summary": "Not assessed during this session."
+
         OUTPUT (JSON only, no prose):
         {
           "configured_skills": [
@@ -154,24 +159,35 @@ module Portfolios
       portfolio.portfolio_skills.destroy_all
 
       (data['configured_skills'] || []).each do |skill_data|
+        level = skill_data['level']
+        confidence = skill_data['confidence']&.to_s&.downcase
+
+        # Skip unassessed skills so they are not falsely saved as L1 with low confidence
+        next if level.nil? || level.to_i <= 0 || confidence == 'unassessed' || Array(skill_data['evidence']).empty?
+
         portfolio.portfolio_skills.create!(
           skill_id:           skill_data['skill_id'],
           skill_label:        skill_data['skill_label'],
           is_discovered:      false,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
+          ai_level:           level.to_i.clamp(1, 5),
+          ai_confidence:      confidence,
           evidence:           Array(skill_data['evidence']).first(3),
           competency_summary: skill_data['competency_summary']
         )
       end
 
       (data['discovered_skills'] || []).each do |skill_data|
+        level = skill_data['level']
+        confidence = skill_data['confidence']&.to_s&.downcase
+
+        next if level.nil? || level.to_i <= 0 || confidence == 'unassessed' || Array(skill_data['evidence']).empty?
+
         portfolio.portfolio_skills.create!(
           skill_id:           nil,
           skill_label:        skill_data['skill_label'],
           is_discovered:      true,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
+          ai_level:           level.to_i.clamp(1, 5),
+          ai_confidence:      confidence,
           evidence:           Array(skill_data['evidence']).first(3),
           competency_summary: skill_data['competency_summary']
         )
